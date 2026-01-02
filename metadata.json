@@ -1,0 +1,7 @@
+{
+  "name": "NPC or Main Character?",
+  "description": "A cinematic AI experience that determines whether you are the protagonist of your own story or just background noise. Features deep personality analysis, sharing cards, and viral growth loops.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
