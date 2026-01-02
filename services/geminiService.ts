@@ -1,26 +1,19 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, GroundingSource } from "../types";
 
 /**
- * Standard client for basic tasks using the system-provided key.
+ * Standard client using the injected API key.
  */
 const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 /**
- * Basic Analysis (NPC vs Main Character)
- * Uses Gemini 3 Flash for speed and cost-efficiency.
+ * CORE ANALYSIS: Character Profile Generation
  */
 export async function analyzeCharacterProfile(answers: string[]): Promise<AnalysisResult> {
   const ai = getAi();
-  const model = 'gemini-3-flash-preview';
-  const prompt = `Analyze this person based on these 9 answers to reveal if they are an NPC, AWAKENING, or MAIN CHARACTER: ${answers.join(", ")}. 
-  Be extremely cinematic, slightly judgmental, and highly evocative. 
-  Determine their scores, unique rarity, and a specific "cinematic arc" like a movie trailer description.`;
-
   const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
+    model: 'gemini-3-flash-preview',
+    contents: `PERSONA DATA: ${answers.join(" | ")}. TASK: Determine if this person is NPC, AWAKENING, or MAIN CHARACTER. Output a cinematic breakdown.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -49,31 +42,17 @@ export async function analyzeCharacterProfile(answers: string[]): Promise<Analys
 }
 
 /**
- * Fast AI responses using Gemini Flash Lite
- */
-export async function fastChat(prompt: string): Promise<string> {
-  const ai = getAi();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-lite-latest',
-    contents: prompt,
-  });
-  return response.text || "";
-}
-
-/**
- * Search Grounding using Gemini 3 Flash
+ * REALITY TOOLS: Search with Grounding
  */
 export async function searchWithGrounding(query: string): Promise<{ text: string, sources: GroundingSource[] }> {
   const ai = getAi();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: query,
-    config: {
-      tools: [{ googleSearch: {} }],
-    },
+    config: { tools: [{ googleSearch: {} }] },
   });
 
-  const sources: GroundingSource[] = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
+  const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
     title: chunk.web?.title,
     uri: chunk.web?.uri
   })).filter((s: GroundingSource) => s.uri) || [];
@@ -82,88 +61,76 @@ export async function searchWithGrounding(query: string): Promise<{ text: string
 }
 
 /**
- * Image/Video Understanding using Gemini 3 Pro
+ * REALITY TOOLS: Vision Understanding
  */
 export async function analyzeMedia(base64Data: string, mimeType: string, prompt: string): Promise<string> {
   const ai = getAi();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: {
-      parts: [
-        { inlineData: { data: base64Data, mimeType } },
-        { text: prompt }
-      ]
-    }
+    contents: { parts: [{ inlineData: { data: base64Data, mimeType } }, { text: prompt }] }
   });
   return response.text || "";
 }
 
 /**
- * Image Editing using Gemini 2.5 Flash Image
- */
-export async function editImage(base64Data: string, mimeType: string, prompt: string): Promise<string | null> {
-  const ai = getAi();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: {
-      parts: [
-        { inlineData: { data: base64Data, mimeType } },
-        { text: prompt }
-      ]
-    }
-  });
-  for (const part of response.candidates?.[0]?.content.parts || []) {
-    if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-  }
-  return null;
-}
-
-/**
- * High-Quality Image Generation using Gemini 3 Pro Image
- * Creates a fresh instance to ensure it uses the user's latest selected API key.
+ * REALITY TOOLS: 4K Pro Image Forge (Dynamic Key Selection)
  */
 export async function generateProImage(prompt: string, size: "1K" | "2K" | "4K"): Promise<string | null> {
   const dynamicAi = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const response = await dynamicAi.models.generateContent({
     model: 'gemini-3-pro-image-preview',
     contents: [{ text: prompt }],
-    config: {
-      imageConfig: { aspectRatio: "1:1", imageSize: size }
-    }
+    config: { imageConfig: { aspectRatio: "1:1", imageSize: size } }
   });
-  for (const part of response.candidates?.[0]?.content.parts || []) {
-    if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-  }
-  return null;
+  const imgPart = response.candidates?.[0]?.content.parts.find(p => p.inlineData);
+  return imgPart ? `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}` : null;
 }
 
 /**
- * Video Generation using Veo 3.1
- * Creates a fresh instance to ensure it uses the user's latest selected API key.
+ * REALITY TOOLS: Veo 3.1 Video Gen (Dynamic Key Selection)
  */
 export async function generateVeoVideo(prompt: string, imageBase64?: string, imageMime?: string): Promise<string | null> {
   const dynamicAi = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-  const config: any = { 
-    model: 'veo-3.1-fast-generate-preview', 
-    prompt: prompt || 'A cinematic protagonist moment', 
-    config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' } 
+  const payload: any = {
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: prompt || 'A protagonist cinematic reveal',
+    config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
   };
-  
-  if (imageBase64 && imageMime) {
-    config.image = { imageBytes: imageBase64, mimeType: imageMime };
+  if (imageBase64) payload.image = { imageBytes: imageBase64, mimeType: imageMime };
+
+  let op = await dynamicAi.models.generateVideos(payload);
+  while (!op.done) {
+    await new Promise(r => setTimeout(r, 10000));
+    op = await dynamicAi.operations.getVideosOperation({ operation: op });
   }
 
-  let operation = await dynamicAi.models.generateVideos(config);
-  while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    operation = await dynamicAi.operations.getVideosOperation({ operation: operation });
-  }
+  const uri = op.response?.generatedVideos?.[0]?.video?.uri;
+  if (!uri) return null;
+  const res = await fetch(`${uri}&key=${process.env.API_KEY}`);
+  return URL.createObjectURL(await res.blob());
+}
 
-  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-  if (!downloadLink) return null;
-  
-  // Appending API Key is mandatory for download
-  const res = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+/**
+ * REALITY TOOLS: Reality Glitch (Image Editing)
+ */
+export async function editImage(base64Data: string, mimeType: string, prompt: string): Promise<string | null> {
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: { parts: [{ inlineData: { data: base64Data, mimeType } }, { text: prompt }] }
+  });
+  const imgPart = response.candidates?.[0]?.content.parts.find(p => p.inlineData);
+  return imgPart ? `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}` : null;
+}
+
+/**
+ * REALITY TOOLS: Fast AI Oracle
+ */
+export async function fastChat(prompt: string): Promise<string> {
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-lite-latest',
+    contents: prompt,
+  });
+  return response.text || "";
 }

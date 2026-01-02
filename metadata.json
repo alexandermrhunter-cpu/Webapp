@@ -1,6 +1,6 @@
 {
   "name": "NPC or Main Character?",
-  "description": "A cinematic AI experience that determines whether you are the protagonist of your own story or just background noise. Features deep personality analysis, sharing cards, and viral growth loops.",
+  "description": "The viral identity mirror that determines your role in the universe.",
   "requestFramePermissions": [
     "camera"
   ]
